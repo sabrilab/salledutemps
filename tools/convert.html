@@ -1,0 +1,26 @@
+<!doctype html><html><body><script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+const L = new FBXLoader();
+const names = ['idle','walk','run','jump'];
+const fbx = {};
+for (const n of names) fbx[n] = await L.loadAsync('/raw/' + n + '.fbx');
+const base = fbx.idle;
+const info = [];
+base.traverse(o => { if (o.isMesh || o.isSkinnedMesh) info.push('mesh '+o.name); });
+// keep only bones
+const root = new THREE.Group(); root.name = 'rig';
+let hips; base.traverse(o => { if (o.isBone && o.name.endsWith('Hips') && !hips) hips = o; });
+// reset to bind pose (loader leaves bones at rest)
+const clone = hips.clone(true);
+root.add(clone);
+const clips = names.map(n => { const c = fbx[n].animations[0].clone(); c.name = n;
+  c.tracks = c.tracks.filter(t => !/\.scale$/.test(t.name));
+  return c; });
+info.push('scale ' + base.scale.toArray().join(','), 'hipsY ' + hips.position.y, 'tracks ' + clips.map(c=>c.name+':'+c.tracks.length+':'+c.duration.toFixed(2)).join(' '));
+const ex = new GLTFExporter();
+const glb = await ex.parseAsync(root, { binary: true, animations: clips, onlyVisible: false });
+const u8=new Uint8Array(glb);let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));const b64=btoa(bin);
+window.__out = { info, b64 };
+</script></body></html>

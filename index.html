@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Salle du temps</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b0c0e;color:#e8e4dc;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  canvas{display:block;touch-action:none}
+  #help{position:fixed;left:16px;bottom:16px;font-size:12px;line-height:1.6;letter-spacing:.04em;padding:10px 14px;background:rgba(10,10,12,.45);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.08);border-radius:8px;pointer-events:none;transition:opacity .4s}
+  #help b{color:#fff;font-weight:600}
+  #help.hide{opacity:0}
+  #loading{position:fixed;inset:0;display:grid;place-items:center;font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:#bbb;background:#0b0c0e}
+  body[data-mood=jour] #help{background:rgba(255,255,255,.35);color:#333;border-color:rgba(0,0,0,.06)}
+  body[data-mood=jour] #help b{color:#000}
+</style>
+</head>
+<body>
+<div id="loading">Salle du temps…</div>
+<div id="help"><b>ZQSD / WASD</b> se déplacer · <b>Maj</b> courir · <b>Espace</b> sauter · <b>Souris</b> caméra (clic pour capturer) · <b>Molette</b> distance · <b>N</b> nuit / jour · <b>H</b> masquer</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

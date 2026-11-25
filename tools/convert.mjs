@@ -1,0 +1,10 @@
+import { createRequire } from 'module'; const { chromium } = createRequire(import.meta.url)('/opt/node22/lib/node_modules/playwright');
+import fs from 'fs';
+const b = await chromium.launch(); const p = await b.newPage();
+p.on('console', m => console.log('console', m.text())); p.on('pageerror', e => console.log('err', e.message));
+await p.goto('http://localhost:5173/tools/convert.html');
+await p.waitForFunction(() => window.__out, null, { timeout: 60000 });
+const o = await p.evaluate(() => window.__out);
+console.log(o.info.join('\n'));
+fs.writeFileSync('public/assets/mannequin-anims.glb', Buffer.from(o.b64, 'base64'));
+await b.close();

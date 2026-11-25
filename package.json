@@ -1,0 +1,28 @@
+{
+  "name": "salledutemps",
+  "version": "1.0.0",
+  "description": "La salle du temps en Three.js, rendu réaliste",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sabrilab/salledutemps.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sabrilab/salledutemps/issues"
+  },
+  "homepage": "https://github.com/sabrilab/salledutemps#readme",
+  "dependencies": {
+    "n8ao": "^1.9.3",
+    "postprocessing": "^6.36.4",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  },
+  "private": true,
+  "type": "module"
+}
