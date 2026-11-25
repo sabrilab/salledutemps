@@ -91,7 +91,7 @@ export function tileSet() {
     const bevel = Math.min(1, e / 0.02);
     const n = N(u, v, 6, 4), m = M(u + ti * 0.13, v, 4, 2);
     // veines légères de marbre
-    const vein = Math.pow(1 - Math.abs(Math.sin((u * 3 + v * 1.3 + V(u, v, 5, 2) * 2.5 + ti) * Math.PI)), 18) * 0.25;
+    const vein = Math.pow(1 - Math.abs(Math.sin((u * 3 + v * 1.3 + V(u, v, 5, 2) * 2.5 + ti) * Math.PI)), 60) * 0.035;
     const tone = 0.93 + (m - 0.5) * 0.05 + (n - 0.5) * 0.03 - vein * 0.6 + (ti % 3) * 0.008;
     const g = 0.62 + n * 0.08;
     const c = tone * (1 - grout) + g * grout;

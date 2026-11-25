@@ -60,8 +60,37 @@ function mats(maxAniso) {
   M.water = new THREE.MeshPhysicalMaterial({ color: 0x9fc2c8, roughness: 0.02, transmission: 0.9, thickness: 0.4, ior: 1.33, envMapIntensity: 0.8 });
   M.flame = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.1, 0.7), toneMapped: true });
   M.ember = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.9, 0.2) });
+  patchSurface(M.tile, { wet: true }); patchSurface(M.void, { wet: true }); patchSurface(M.ashlar, { wet: true, grime: 0.8 });
+  patchSurface(M.plasterOut, { grime: 1 }); patchSurface(M.trim, { grime: 0.6 });
   for (const k in M) for (const t of ['map', 'roughnessMap', 'normalMap']) if (M[k][t]) M[k][t].anisotropy = maxAniso;
   return M;
+}
+
+
+// ------------------------------------------------------------------ shaders additionnels : sol mouillé (flaques) et salissures
+export const surfaceU = { uWet: { value: 0 } };
+const GLSL_NOISE = `
+  float sh_h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+  float sh_n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(sh_h(i),sh_h(i+vec2(1,0)),f.x),mix(sh_h(i+vec2(0,1)),sh_h(i+1.),f.x),f.y);}
+  float sh_fbm(vec2 p){float s=0.,a=.5;for(int i=0;i<5;i++){s+=a*sh_n(p);p*=2.07;a*=.5;}return s;}
+`;
+function patchSurface(mat, { wet = false, grime = 0 } = {}) {
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uWet = surfaceU.uWet;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;\nuniform float uWet;\n' + GLSL_NOISE)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        ${grime > 0 ? `{ float g = smoothstep(0.0, 2.2, vWP.y + 0.2); float st = sh_fbm(vec2(vWP.x * 2.5 + vWP.z * 2.5, vWP.y * 0.25)); 
+          float k = mix(0.45, 1.0, g) * mix(1.0, 0.86 + st * 0.2, ${grime.toFixed(2)}); diffuseColor.rgb *= mix(1.0, k, ${grime.toFixed(2)}); }` : ''}
+        ${wet ? `float puddle = smoothstep(0.52, 0.62, sh_fbm(vWP.xz * 0.16 + 3.7)); float wetK = uWet;
+          diffuseColor.rgb *= mix(1.0, mix(0.32, 0.12, puddle), wetK);` : ''}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        ${wet ? `roughnessFactor = mix(roughnessFactor, mix(0.16, 0.02, puddle), wetK);` : ''}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        ${wet ? `normal = normalize(mix(normal, normalize(vNormal), puddle * wetK));` : ''}`);
+  };
+  mat.customProgramCacheKey = () => 'surf' + (wet ? 'w' : '') + grime;
 }
 
 // UV « monde » pour boîtes : chaque face reçoit des UV en mètres → tuilage cohérent
@@ -159,6 +188,26 @@ function sconce(group, M, x, y, z, ry, power = 1) {
   const L = new THREE.PointLight(0xffa860, 3.5 * power, 7, 2); L.position.set(0, 0.18, 0.3); g.add(L);
   lights.push({ L, base: L.intensity, fl, ph: Math.random() * 10 });
   group.add(g);
+}
+
+
+// suspension : chaîne + abat-jour conique en laiton, ampoule chaude, spot vers le bas
+function pendant(group, M, x, z, drop = 2.2, shadow = false, power = 1) {
+  const g = new THREE.Group(); g.position.set(x, H, z);
+  const ch = mesh(new THREE.CylinderGeometry(0.006, 0.006, drop, 6), M.iron, false); ch.position.y = -drop / 2; g.add(ch);
+  const shade = lathe([[0.03, 0], [0.05, -0.02], [0.12, -0.08], [0.26, -0.22], [0.28, -0.26], [0.27, -0.26], [0.25, -0.22], [0.11, -0.085], [0.04, -0.03], [0.025, -0.01]], M.brass, 48);
+  shade.material = M.brass.clone(); shade.material.side = THREE.DoubleSide; shade.position.y = -drop; g.add(shade);
+  const bulb = mesh(new THREE.SphereGeometry(0.045, 16, 12), M.flame, false, false); bulb.position.y = -drop - 0.12; g.add(bulb);
+  const sp = new THREE.SpotLight(0xffb46a, 22 * power, 9, 0.95, 0.6, 2); sp.position.y = -drop - 0.1; sp.target.position.set(0, -drop - 3, 0); g.add(sp, sp.target);
+  sp.castShadow = shadow; if (shadow) { sp.shadow.mapSize.set(1024, 1024); sp.shadow.bias = -0.0008; sp.shadow.radius = 5; sp.shadow.camera.near = 0.1; }
+  const fill = new THREE.PointLight(0xffa45a, 1.2 * power, 4, 2); fill.position.y = -drop - 0.05; g.add(fill);
+  lights.push({ L: sp, base: sp.intensity, fl: null, ph: 0, steady: true });
+  group.add(g); return g;
+}
+function bottle(group, x, y, z, h, col) {
+  const m = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.72, envMapIntensity: 1.2, clearcoat: 1 });
+  const b = lathe([[0, 0], [0.035, 0], [0.037, 0.01], [0.037, h * 0.62], [0.02, h * 0.78], [0.011, h * 0.84], [0.011, h], [0, h]], m, 20);
+  b.castShadow = true; b.position.set(x, y, z); group.add(b);
 }
 
 function bed(group, M, x, z, ry, blanket) {
@@ -394,6 +443,21 @@ export function buildWorld(scene, renderer) {
   barrel(I, M, 4.7, 1.2, 1); barrel(I, M, 5.45, 1.35, 0.9);
   table(I, M, 5.7, -2.6, 1.3, 0.8); stool(I, M, 5.0, -2.6); stool(I, M, 6.4, -2.6); oilLamp(I, M, 5.85, FLOOR_IN + 0.78, -2.5, 1.0, false);
   jar(I, M, 5.4, FLOOR_IN + 0.78, -2.75, 0.6, M.ceramicW);
+
+  // appliques extérieures de part et d'autre de la porte
+  sconce(B, M, -2.2, FLOOR_IN + 2.7, 2.27, 0, 3.2); sconce(B, M, 2.2, FLOOR_IN + 2.7, 2.27, 0, 3.2);
+  // suspensions
+  pendant(I, M, 5.7, -2.6, 2.6, true, 1); pendant(I, M, 0, -10.3, 2.9, false, 0.8); pendant(I, M, -5.6, -4.0, 3.1, false, 0.6);
+  // étagères murales chargées de bouteilles et bocaux au-dessus du plan de travail
+  for (const y of [1.55, 2.05, 2.55]) {
+    I.add(boxAt(7.42, FLOOR_IN + y, -4.6, 7.75, FLOOR_IN + y + 0.035, 1.4, M.wood));
+    for (let zz = -4.45; zz < 1.3; zz += 0.11 + ((zz * 13.7) % 1 + 1) % 1 * 0.08) {
+      const r = ((zz * 91.3 + y * 7) % 1 + 1) % 1;
+      if (r < 0.62) bottle(I, 7.6, FLOOR_IN + y + 0.035, zz, 0.24 + r * 0.16, [0x5a3a12, 0x1f4a2a, 0x7a1e14, 0xb5904a, 0x2a2a35][Math.floor(r * 8) % 5]);
+      else jar(I, M, 7.6, FLOOR_IN + y + 0.035, zz, 0.55, r > 0.8 ? M.ceramicW : M.ceramic);
+    }
+  }
+  for (const z of [-4.5, -1.5, 1.3]) I.add(boxAt(7.68, FLOOR_IN + 1.4, z - 0.02, 7.75, FLOOR_IN + 2.6, z + 0.02, M.woodDark));
   // bain (aile droite, arrière)
   const tub = lathe([[0, 0], [1.25, 0], [1.3, 0.1], [1.3, 0.62], [1.38, 0.68], [1.36, 0.74], [1.15, 0.74], [1.1, 0.68], [1.1, 0.1], [0, 0.1]], M.stoneDark, 96); tub.position.set(6.0, FLOOR_IN, -9.0); I.add(tub); circ(6.0, -9.0, 1.4);
   const water = mesh(new THREE.CircleGeometry(1.1, 64), M.water, false, true); water.rotation.x = -Math.PI / 2; water.position.set(6.0, FLOOR_IN + 0.55, -9.0); I.add(water);

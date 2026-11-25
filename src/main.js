@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { EffectComposer, RenderPass, EffectPass, BloomEffect, ToneMappingEffect, ToneMappingMode, VignetteEffect, NoiseEffect, BlendFunction, SMAAEffect, Effect, EffectAttribute } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
-import { buildWorld, groundHeight, colliders, occluders, lights, FLOOR_IN } from './world.js';
+import { buildWorld, groundHeight, colliders, occluders, lights, FLOOR_IN, surfaceU } from './world.js';
 import { loadMannequin } from './mannequin.js';
 
 const params = new URLSearchParams(location.search);
@@ -75,6 +75,29 @@ const shaftMat = new THREE.ShaderMaterial({
 });
 const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.95, 1, 48, 1, true), shaftMat); scene.add(shaft);
 
+
+// pluie (ambiance nuit) : traits fins autour de la caméra
+const RAIN_N = Q === 'low' ? 2500 : 6000;
+const rainPos = new Float32Array(RAIN_N * 6), rainSeed = new Float32Array(RAIN_N * 3);
+for (let i = 0; i < RAIN_N; i++) { rainSeed[i * 3] = (Math.random() - 0.5) * 36; rainSeed[i * 3 + 1] = Math.random() * 18; rainSeed[i * 3 + 2] = (Math.random() - 0.5) * 36; }
+const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0x8a96a4, transparent: true, opacity: 0.16, depthWrite: false, fog: true }));
+rain.frustumCulled = false; scene.add(rain);
+function updateRain(dt, cx, cz) {
+  const vis = mood === 'nuit'; rain.visible = vis; if (!vis) return;
+  for (let i = 0; i < RAIN_N; i++) {
+    let y = rainSeed[i * 3 + 1] - dt * 13; if (y < -0.3) y += 18; rainSeed[i * 3 + 1] = y;
+    const x = cx + ((rainSeed[i * 3] - cx * 0) % 36), z = cz + rainSeed[i * 3 + 2];
+    const wx = cx + (((rainSeed[i * 3] - cx) % 36) + 54) % 36 - 18, wz = cz + (((rainSeed[i * 3 + 2] - cz) % 36) + 54) % 36 - 18;
+    // pas de pluie sous le toit
+    const inside = wx > -8.6 && wx < 8.6 && wz > -12.6 && wz < 3.9 && y < 7;
+    const yy = inside ? -50 : y;
+    rainPos[i * 6] = wx; rainPos[i * 6 + 1] = yy; rainPos[i * 6 + 2] = wz;
+    rainPos[i * 6 + 3] = wx + 0.03; rainPos[i * 6 + 4] = yy + 0.3; rainPos[i * 6 + 5] = wz + 0.02;
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+
 // ------------------------------------------------------------------ ambiances
 // « nuit » : ambiance sombre et dramatique (orage dans le vide), « jour » : vide blanc éclatant canonique
 const MOODS = {
@@ -105,7 +128,7 @@ function applyMood(name) {
   if (name === 'jour') { envScene.background = null; }
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.02); scene.environment = envRT.texture; scene.environmentIntensity = m.env;
   // sol mouillé la nuit : rugosité réduite sur dalles et pierre
-  for (const [mat, r] of baseRough) if (mat === M.tile || mat === M.ashlar || mat === M.void || mat === M.floorIn) mat.roughness = r * m.wet;
+  surfaceU.uWet.value = name === 'nuit' ? 1 : 0;
   for (const p of lampPosts) { p.L.intensity = 16 * m.lamps; p.halo.material.opacity = 0.3 * m.lamps; p.bulbMat.color.setRGB(6 * m.lamps + 0.05, 3.6 * m.lamps + 0.05, 1.6 * m.lamps + 0.05); }
   shaftMat.uniforms.col.value.setRGB(m.shaft[0], m.shaft[1], m.shaft[2]); shaftMat.uniforms.k.value = m.shaft[3];
   for (const l of lights) l.base = l.L.userData.b0 ?? (l.L.userData.b0 = l.base), l.base = l.L.userData.b0 * (name === 'nuit' ? 1.6 : 0.9);
@@ -260,9 +283,10 @@ function update(dt, t) {
   const d = sun.userData.dir; sun.position.set(p.x + d.x * 80, d.y * 80, p.z + d.z * 80); sun.target.position.set(p.x, 0, p.z);
 
   // flammes
-  for (const l of lights) { const f = 0.85 + Math.sin(t * 11 + l.ph) * 0.06 + Math.sin(t * 23.7 + l.ph * 2) * 0.05 + (Math.random() - 0.5) * 0.06; l.L.intensity = l.base * f; if (l.fl) l.fl.scale.y = 2.4 * (0.9 + f * 0.15); }
+  for (const l of lights) { if (l.steady) { l.L.intensity = l.base; continue; } const f = 0.85 + Math.sin(t * 11 + l.ph) * 0.06 + Math.sin(t * 23.7 + l.ph * 2) * 0.05 + (Math.random() - 0.5) * 0.06; l.L.intensity = l.base * f; if (l.fl) l.fl.scale.y = 2.4 * (0.9 + f * 0.15); }
   // poussière
   const pa = dust.geometry.attributes.position; for (let i = 0; i < pa.count; i++) { let y = pa.getY(i) + dt * 0.03; if (y > FLOOR_IN + 5.6) y = FLOOR_IN; pa.setY(i, y); pa.setX(i, pa.getX(i) + Math.sin(t * 0.3 + i) * dt * 0.02); } pa.needsUpdate = true;
+  updateRain(dt, camera.position.x, camera.position.z);
   // éclairs (nuit)
   skyU.time.value = t;
   if (mood === 'nuit') {
