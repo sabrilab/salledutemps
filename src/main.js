@@ -9,7 +9,7 @@ const Q = params.get('q') || (matchMedia('(pointer: coarse)').matches ? 'low' : 
 
 // ------------------------------------------------------------------ rendu
 const renderer = new THREE.WebGLRenderer({ antialias: false, stencil: false, depth: true, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
-renderer.setPixelRatio(Math.min(devicePixelRatio, Q === 'low' ? 1 : 1.5));
+renderer.setPixelRatio(Math.min(devicePixelRatio, Q === 'low' ? 1 : 1.25));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.NoToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -64,6 +64,15 @@ const lampPosts = [];
     halo.scale.setScalar(1.7); halo.position.y = 4.25; g.add(halo);
     scene.add(g); lampPosts.push({ L, halo, bulb, bulbMat }); colliders.circles.push([x, z, 0.4]);
   }
+}
+
+
+// projecteurs au pied des tours (lumière froide rasante, visibles la nuit)
+const towerSpots = [];
+for (const sx of [-1, 1]) {
+  const sp = new THREE.SpotLight(0xbfd4ff, 0, 40, 0.42, 0.9, 1.6);
+  sp.position.set(sx * 12.5 + sx * -0.2, 1.6, -7 + 3.2); sp.target.position.set(sx * 12.5, 24, -7);
+  scene.add(sp, sp.target); towerSpots.push(sp);
 }
 
 // faisceau lumineux de l'oculus (cône additif à dégradé)
@@ -130,6 +139,7 @@ function applyMood(name) {
   // sol mouillé la nuit : rugosité réduite sur dalles et pierre
   surfaceU.uWet.value = name === 'nuit' ? 1 : 0;
   for (const p of lampPosts) { p.L.intensity = 16 * m.lamps; p.halo.material.opacity = 0.3 * m.lamps; p.bulbMat.color.setRGB(6 * m.lamps + 0.05, 3.6 * m.lamps + 0.05, 1.6 * m.lamps + 0.05); }
+  for (const sp of towerSpots) sp.intensity = name === 'nuit' ? 110 : 0;
   shaftMat.uniforms.col.value.setRGB(m.shaft[0], m.shaft[1], m.shaft[2]); shaftMat.uniforms.k.value = m.shaft[3];
   for (const l of lights) l.base = l.L.userData.b0 ?? (l.L.userData.b0 = l.base), l.base = l.L.userData.b0 * (name === 'nuit' ? 1.6 : 0.9);
   if (bloom) bloom.intensity = m.bloom;
@@ -318,7 +328,7 @@ const VIEWS = {
   bed: { p: [-5.0, FLOOR_IN, -5.2], yaw: -0.9, pitch: 0.2, dist: 2.6 },
   kitchen: { p: [5.2, FLOOR_IN, -0.6], yaw: 2.6, pitch: 0.2, dist: 2.4 },
   bath: { p: [4.8, FLOOR_IN, -6.4], yaw: 0.6, pitch: 0.3, dist: 2.2 },
-  tower: { p: [-12, 0, 6], yaw: -0.4, pitch: -0.3, dist: 4 },
+  tower: { p: [-9, 0, 8], yaw: 0.5, pitch: -0.45, dist: 4 },
 };
 const v = VIEWS[params.get('view')];
 if (v) { hero.root.position.set(...v.p); groundY = v.p[1]; yaw = v.yaw; pitch = v.pitch; dist = v.dist; camDist = dist; hero.root.rotation.y = yaw + Math.PI; }
